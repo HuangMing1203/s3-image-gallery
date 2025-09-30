@@ -10,12 +10,11 @@ import {
   Box,
   CircularProgress,
   Alert,
-  ImageList,
-  ImageListItem,
-  useMediaQuery,
-  Paper
+  Paper,
+  Dialog
 } from '@mui/material';
 import PhotoLibraryIcon from '@mui/icons-material/PhotoLibrary';
+import LazyImage from './LazyImage';
 
 function parseS3FileList(xml, inputUrl) {
   const parser = new DOMParser();
@@ -49,10 +48,9 @@ export default function App() {
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const isSmall = useMediaQuery('(max-width:600px)');
-  const isMedium = useMediaQuery('(max-width:900px)');
-
-  const cols = isSmall ? 2 : isMedium ? 3 : 4;
+  const [imgLoaded, setImgLoaded] = useState({});
+  const [containerRatios, setContainerRatios] = useState({});
+  const [previewImg, setPreviewImg] = useState(null);
 
   const handleSubmit = async e => {
     e.preventDefault();
@@ -80,10 +78,10 @@ export default function App() {
           </Typography>
         </Toolbar>
       </AppBar>
-      <Container maxWidth="md" sx={{ mt: 4 }}>
+      <Container maxWidth="xl" sx={{ mt: 4 }}>
         <Paper elevation={3} sx={{ p: { xs: 2, sm: 4 }, mb: 3 }}>
           <form onSubmit={handleSubmit}>
-            <Box display="flex" flexDirection={{ xs: 'column', sm: 'row' }} gap={2}>
+            <Box display="flex" flexDirection="row" gap={2} alignItems="center">
               <TextField
                 label="S3 file list URL (XML)"
                 variant="outlined"
@@ -99,30 +97,84 @@ export default function App() {
                 variant="contained"
                 color="primary"
                 disabled={loading}
-                sx={{ minWidth: 130 }}
+                sx={{ minWidth: 48, px: 1, py: 1, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
-                {loading ? <CircularProgress size={24} /> : 'Show Gallery'}
+                {loading ? <CircularProgress size={24} /> : <PhotoLibraryIcon />}
               </Button>
             </Box>
           </form>
           {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
         </Paper>
         {images.length > 0 ? (
-          <ImageList variant="masonry" cols={cols} gap={12}>
-            {images.map((img, i) => (
-              <ImageListItem key={img.url}>
-                <img
-                  src={img.url}
-                  alt={`img-${i}`}
-                  loading="lazy"
-                  style={{ width: '100%', borderRadius: 8 }}
-                />
-                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
-                  {img.lastModified.toLocaleString()}
-                </Typography>
-              </ImageListItem>
-            ))}
-          </ImageList>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: 2,
+            }}
+          >
+            {images.map((img, i) => {
+              const ratio = containerRatios[img.url] || { width: 1, height: 1 };
+              const aspect = ratio.height / ratio.width;
+              return (
+                <Box key={img.url}>
+                  <Box
+                    sx={{
+                      position: 'relative',
+                      width: '100%',
+                      pt: `${aspect * 100}%`, // dynamic aspect ratio
+                      borderRadius: 2,
+                      overflow: 'hidden',
+                      bgcolor: '#eee',
+                      transition: 'padding-top 0.3s'
+                    }}
+                  >
+                    {!imgLoaded[img.url] && (
+                      <Box
+                        sx={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          height: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        <CircularProgress size={32} />
+                      </Box>
+                    )}
+                    <LazyImage
+                      src={img.url}
+                      alt={`img-${i}`}
+                      onLoad={size => {
+                        setImgLoaded(l => ({ ...l, [img.url]: true }));
+                        if (size && size.width && size.height) {
+                          setContainerRatios(r => ({ ...r, [img.url]: size }));
+                        }
+                      }}
+                      onClick={() => setPreviewImg(img)}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        borderRadius: 8,
+                        opacity: imgLoaded[img.url] ? 1 : 0,
+                        transition: 'opacity 0.3s'
+                      }}
+                    />
+                  </Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+                    {img.lastModified.toLocaleString()}
+                  </Typography>
+                </Box>
+              );
+            })}
+          </Box>
         ) : (
           !loading && !error && (
             <Typography variant="body2" color="text.secondary" align="center" sx={{ mt: 4 }}>
@@ -130,6 +182,30 @@ export default function App() {
             </Typography>
           )
         )}
+        {/* Image preview dialog */}
+        <Dialog
+          open={!!previewImg}
+          onClose={() => setPreviewImg(null)}
+          maxWidth="md"
+          fullWidth
+          PaperProps={{ sx: { bgcolor: 'background.default', borderRadius: 0, boxShadow: 8, width: 'unset' } }}
+        >
+          <Box sx={{ position: 'relative', bgcolor: 'black', textAlign: 'center' }}>
+            {previewImg && (
+              <img
+                src={previewImg.url}
+                alt="preview"
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '80vh',
+                  margin: 'auto',
+                  display: 'block',
+                  background: '#222'
+                }}
+              />
+            )}
+          </Box>
+        </Dialog>
       </Container>
     </Box>
   );
