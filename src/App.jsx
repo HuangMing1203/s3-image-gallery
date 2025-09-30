@@ -1,20 +1,22 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 
-function parseS3FileList(xml) {
+function parseS3FileList(xml, inputUrl) {
   const urls = [];
   const parser = new DOMParser();
   const doc = parser.parseFromString(xml, "application/xml");
-  const origins = doc.getElementsByTagName('ListBucketResult')[0]?.baseURI || '';
   const contents = doc.getElementsByTagName('Contents');
+
+  // Get base URL without query or trailing slash
+  const urlObj = new URL(inputUrl);
+  const baseUrl = urlObj.origin + urlObj.pathname.replace(/\/$/, '');
+
   for (let i = 0; i < contents.length; i++) {
     const key = contents[i].getElementsByTagName('Key')[0]?.textContent;
     if (key && /\.(jpe?g|png|gif|bmp|webp)$/i.test(key)) {
-      let url = origins.replace(/\?.*$/, '') + key;
-      if (!/^https?:\/\/.*$/.test(url)) {
-        url = origins.replace(/\/[^\/]*$/, '/') + key;
-      }
-      urls.push(url);
+      // Join baseUrl and key (handle leading/trailing slash)
+      const imgUrl = baseUrl.replace(/\/$/, '') + '/' + key.replace(/^\/+/, '');
+      urls.push(imgUrl);
     }
   }
   return urls;
@@ -33,7 +35,7 @@ export default function App() {
     setImages([]);
     try {
       const res = await axios.get(inputUrl, { responseType: 'text' });
-      const imgs = parseS3FileList(res.data);
+      const imgs = parseS3FileList(res.data, inputUrl);
       if (imgs.length === 0) setError('No images found in the provided S3 list.');
       setImages(imgs);
     } catch (err) {
